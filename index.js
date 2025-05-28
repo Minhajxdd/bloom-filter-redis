@@ -1,13 +1,9 @@
-import express from "express";
+import http from "http";
 import Redis from "ioredis";
 
-const app = express();
 const redis = new Redis();
 
 const PORT = process.env.PORT || 3000;
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
 const BLOOM_KEY = "username";
 
@@ -23,32 +19,57 @@ const BLOOM_KEY = "username";
   }
 })();
 
-app.post("/addusername", async (req, res) => {
-  const { username } = req.body;
+const server = http.createServer((req, res) => {
+  if (req.url === "/addusername" && req.method == "POST") {
+    let body = "";
 
-  if (!username || typeof username !== "string") {
-    return res.status(400).send({
-      status: "failed",
-      message: "username should be included",
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+
+    req.on("end", async () => {
+      const data = JSON.parse(body);
+
+      const { username } = data;
+
+      if (!username || typeof username !== "string") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+
+        return res.end(
+          JSON.stringify({
+            status: "failed",
+            message: "username should be included",
+          })
+        );
+      }
+
+      const result = await redis.call("BF.EXISTS", BLOOM_KEY, username);
+
+      if (result == 1) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+
+        return res.end(
+          JSON.stringify({
+            status: "failed",
+            message: "username exists",
+          })
+        );
+      }
+
+      await redis.call("BF.ADD", BLOOM_KEY, username);
+
+      res.writeHead(201, { "Content-Type": "application/json" });
+
+      return res.end(
+        JSON.stringify({
+          status: "success",
+          message: "username added successfully",
+        })
+      );
     });
   }
-
-  const result = await redis.call("BF.EXISTS", BLOOM_KEY, username);
-
-  if (result == 1) {
-    return res.status(400).json({
-      status: "failed",
-      message: "username exists",
-    });
-  }
-
-  await redis.call("BF.ADD", BLOOM_KEY, username);
-  res.status(201).json({
-    status: "success",
-    message: "username added successfully",
-  });
 });
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server started at port : ${PORT}`);
 });
