@@ -46,6 +46,7 @@ const server = http.createServer((req, res) => {
       const result = await redis.call("BF.EXISTS", BLOOM_KEY, username);
 
       if (result == 1) {
+
         res.writeHead(400, { "Content-Type": "application/json" });
 
         return res.end(
